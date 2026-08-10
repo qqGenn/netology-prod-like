@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project Specific
+.gigacode/**
+project.todo
+prompts
+cache/data/**
+logs
+llm/examples

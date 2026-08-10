@@ -1,0 +1,8 @@
+{
+    "max_retries": 3,
+    "wait_time_base": 2,
+    "timeout": 40,
+    "temperature": 0.33,
+    "max_tokens": 2000,
+    "enabled_providers": ["yandex", "gigachat"]
+}
