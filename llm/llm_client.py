@@ -15,7 +15,7 @@ LLM Client — унифицированный клиент для работы �
 
 import json
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from openai import (
     APIConnectionError,
@@ -36,10 +36,6 @@ from llm.errors import (
 from llm.providers import PROVIDERS, build_provider
 from llm.providers.base import LLMProvider
 from llm.system_prompt import system_prompt as SYSTEM_PROMPT_TEMPLATE
-
-# Коды ошибок для LLM клиента
-PROVIDER_YANDEX = "yandex"
-PROVIDER_GIGACHAT = "gigachat"
 
 # Типы временных ошибок, после которых стоит попробовать другого провайдера
 _TRANSIENT_ERRORS = (
@@ -77,10 +73,6 @@ class LLMClient:
                 "Проверьте enabled_providers в конфиге (config/dev.py, config/prod.py) "
                 "и ключи в .env"
             )
-
-        # Полный URI модели Yandex сохраняется отдельно: используется в ключе кэша
-        yandex = self._providers.get(PROVIDER_YANDEX)
-        self.model_name: Optional[str] = yandex.model if yandex else None
 
         logger.info(
             f"Инициализирован LLMClient. "

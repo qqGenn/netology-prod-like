@@ -11,7 +11,7 @@ Unit-тесты проекта покрывают логику сервиса б
 pytest -q
 ```
 
-23 теста, проходят локально и в CI (Debian 13 Trixie, `.github/workflows/ci.yml`).
+28 тестов, проходят локально и в CI (Debian 13 Trixie, `.github/workflows/ci.yml`).
 
 ## Общий подход
 
@@ -45,10 +45,12 @@ pytest -q
 | Структура промпта | Присутствуют ключи `look_variants` и `recommendation` |
 | `get_provider_chain` | Порядок провайдеров совпадает с `enabled_providers` из конфига |
 
-### Fallback и ретраи — `tests/test_image_maker_service.py`
+### Fallback, ретраи и кэширование — `tests/test_image_maker_service.py`
 
-Проверяются через `ImageMakerService._call_llm` с фейковым LLM-клиентом, у которого
-задан список провайдеров (`yandex`, `gigachat`) и управляемое поведение.
+Проверяются через `ImageMakerService._call_llm` / `generate_look` с фейковым
+LLM-клиентом (список провайдеров `yandex`, `gigachat` и управляемое поведение)
+и in-memory `FakeCache`. Кэш-ключ строится по фактической модели провайдера
+(через `get_model_name()`), поэтому при fallback ключ пересчитывается.
 
 | Кейс | Ожидание |
 |---|---|
@@ -56,6 +58,11 @@ pytest -q
 | Сетевая ошибка на первой попытке | Ретрай: ровно 2 вызова, затем успех; secondary не вызывается |
 | Ошибка валидации (`LLM_CLIENT_VALIDATION_ERROR`) | Не ретраится (1 вызов), происходит fallback на secondary |
 | Все провайдеры недоступны | Поднимается последняя ошибка; каждый провайдер исчерпывает `max_retries` |
+| Fallback на secondary | Возвращается `request_hash`, построенный по модели gigachat (отличается от primary) |
+| Попадание в кэш secondary | Ответ берётся из кэша, gigachat не вызывается (кэш проверяется до запроса в LLM) |
+| Кэш-хит в `generate_look` | Кэш-файл не перезаписывается: `cache.set` не вызывается |
+| Битый кэш-файл | Ключ удаляется, запрос проваливается в LLM |
+| Fallback через `generate_look` (end-to-end) | `cache.set` пишет данные под хэшем модели gigachat, primary-ключ не создаётся |
 
 ### Конфигурация — `tests/test_config.py`
 

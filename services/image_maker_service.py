@@ -62,12 +62,17 @@ class ImageMakerService:
             message=request.message,
         )
 
-    async def _call_llm(self, request: LookCreate) -> dict:
-        """Мастер-функция: идём по цепочке провайдеров, пока один не ответит.
+    async def _call_llm(self, request: LookCreate) -> tuple[str, str, dict, bool]:
+        """Мастер-функция: кэш → провайдер → фолбэк по цепочке.
 
-        Сначала primary (нулевой индекс enabled_providers); если он упал,
-        переключаемся на следующий провайдер (secondary). Если все провайдеры
-        недоступны — пробрасываем ошибку.
+        Для каждого провайдера сначала проверяется кэш по ключу, построенному
+        на имени его модели (без folder_id). При попадании и валидных данных
+        ответ возвращается без обращения к LLM; битые данные удаляются и запрос
+        идёт в LLM. При неудачном запросе переключаемся на следующий провайдер.
+
+        Возвращает (provider, request_hash, response, from_cache), где
+        request_hash — ключ, построенный по фактической модели, ответившей
+        из кэша или из LLM, а from_cache=True означает ответ из кэша.
         """
         providers = self.llm.get_provider_chain()
         if not providers:
@@ -78,8 +83,27 @@ class ImageMakerService:
         last_error: Union[Exception, None] = None
 
         for idx, provider in enumerate(providers):
+            request_hash = self._generate_request_hash(
+                request, self.llm.get_provider_model(provider)
+            )
+            logger.info(
+                f"Проверяем кэш по ключу: {request_hash} (провайдер {provider})"
+            )
+
+            cached_data = self.cache.get(request_hash)
+            if cached_data is not None:
+                try:
+                    LookData(**cached_data)
+                except Exception:
+                    logger.warning(f"Битые данные в кэше, удаляем ключ: {request_hash}")
+                    self.cache.delete(request_hash)
+                else:
+                    logger.info(f"Найдены данные в кэше по ключу: {request_hash}")
+                    return provider, request_hash, cached_data, True
+
             try:
-                return await self._call_provider(provider, request)
+                response = await self._call_provider(provider, request)
+                return provider, request_hash, response, False
             except Exception as e:
                 last_error = e
                 if idx + 1 < len(providers):
@@ -110,31 +134,19 @@ class ImageMakerService:
         request_data = request.model_dump()
         logger.info(f"Входящий запрос: {json.dumps(request_data, ensure_ascii=False)}")
 
-        # Формируем хэш-ключ запроса
-        request_hash = self._generate_request_hash(request)
-        logger.info(f"Сформирован хэш-ключ запроса: {request_hash}")
-
-        # Проверяем наличие в кэше
-        cached_data = self.cache.get(request_hash)
-        if cached_data is not None:
-            logger.info(f"Найдены данные в кэше по ключу: {request_hash}")
-            try:
-                image_data = LookData(**cached_data)
-                return ApiResponseSuccess(status="success", data=image_data)
-            except Exception as e:
-                logger.error(f"Ошибка валидации кэшированных данных: {e}")
-                return ApiResponseError(
-                    status="error",
-                    error_type="internal",
-                    message=f"Некорректные данные в кэше: {str(e)}",
-                )
-
-        logger.info(f"Отправляем запрос в LLM по ключу: {request_hash}")
-
-        # Отправляем запрос в LLM с ретраями через tenacity
+        # Отправляем запрос в LLM: проверка кэша по ключу каждой модели
+        # и фолбэк между провайдерами
         try:
-            llm_response = await self._call_llm(request)
-            logger.info(f"Получен ответ от LLM для ключа: {request_hash}")
+            provider, request_hash, llm_response, from_cache = await self._call_llm(
+                request
+            )
+            if from_cache:
+                logger.info(f"Получен ответ из кэша для ключа: {request_hash}")
+            else:
+                logger.info(
+                    f"Получен ответ от LLM для ключа: {request_hash} "
+                    f"(провайдер {provider})"
+                )
         except Exception as e:
             logger.error(f"Ошибка при обращении к LLM: {e}")
             error_msg = str(e)
@@ -182,22 +194,25 @@ class ImageMakerService:
                 message=f"Некорректная структура ответа от LLM: {str(e)}",
             )
 
-        # Записываем в кэш
-        try:
-            self.cache.set(request_hash, image_data.model_dump())
-            logger.info(f"Данные успешно записаны в кэш по ключу: {request_hash}")
-        except Exception as e:
-            logger.error(f"Ошибка при записи в кэш: {e}")
-            # Возвращаем данные, даже если кэширование не удалось
-            return ApiResponseSuccess(status="success", data=image_data)
+        # Записываем в кэш только новые ответы от LLM; кэш-хит не перезаписываем
+        if not from_cache:
+            try:
+                self.cache.set(request_hash, image_data.model_dump())
+                logger.info(f"Данные успешно записаны в кэш по ключу: {request_hash}")
+            except Exception as e:
+                logger.error(f"Ошибка при записи в кэш: {e}")
+                # Возвращаем данные, даже если кэширование не удалось
+                return ApiResponseSuccess(status="success", data=image_data)
 
         return ApiResponseSuccess(status="success", data=image_data)
 
-    def _generate_request_hash(self, request: LookCreate) -> str:
+    def _generate_request_hash(self, request: LookCreate, model_name: str) -> str:
         """Генерирует хэш-ключ на основе итогового промпта, модели и температуры.
 
         В хэше учитываются параметры пользователя, т.к. result_prompt
         собирается подстановкой данных запроса в шаблон системного промпта.
+        model_name берётся из provider.get_model_name() — имя модели без
+        приватного префикса gpt://{folder_id}.
         """
         result_prompt = self.llm.build_result_prompt(
             gender=request.gender.value,
@@ -207,7 +222,7 @@ class ImageMakerService:
         )
         hash_data = {
             "result_prompt": result_prompt,
-            "model_name": self.llm.model_name,
+            "model_name": model_name,
             "temperature": self.llm.temperature,
         }
         request_json = json.dumps(hash_data, sort_keys=True)
