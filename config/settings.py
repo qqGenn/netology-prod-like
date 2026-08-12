@@ -1,19 +1,24 @@
 """Глобальная конфигурация приложения.
 
 Загрузка и валидация:
-1. .env файл (в .gitignore, пример заполнения смотреть в .env.example) - обязательные переменные окружения для LLM-провайдеров
-2. config/main.json (под git) - параметры конфигурации приложения
+1. .env файл (в .gitignore, пример заполнения смотреть в .env.example) -
+   обязательные переменные окружения для LLM-провайдеров
+2. APP_ENV (dev | prod) - выбирает набор параметров из config/:
+   - config/base.py - базовые настройки, общие для всех режимов
+   - config/dev.py / config/prod.py - переопределения под конкретный режим
 
 Если провайдер включён в enabled_providers, но хотя бы одна его переменная
 окружения не заполнена — приложение не стартует с ошибкой конфигурации.
 """
-import json
+
 import os
 import sys
-from pathlib import Path
 from typing import Dict, List
 
 from dotenv import load_dotenv
+
+from config.dev import DEV_CONFIG
+from config.prod import PROD_CONFIG
 from core.log import logger
 
 # Загружаем переменные окружения из .env файла (обязательно для работы)
@@ -21,10 +26,13 @@ load_dotenv()
 
 
 class ConfigurationError(Exception):
-    """Ошибка конфигурации приложения (config/main.json или .env)."""
+    """Ошибка конфигурации приложения (config/*.py или .env)."""
 
 
-# Обязательные ключи config/main.json
+# Режимы окружения приложения
+SUPPORTED_ENVS = ("dev", "prod")
+
+# Обязательные ключи конфигурации
 REQUIRED_CONFIG_KEYS = (
     "max_retries",
     "wait_time_base",
@@ -54,43 +62,48 @@ PROVIDER_REQUIRED_ENV_VARS: Dict[str, List[str]] = {
     ],
 }
 
+# Наборы конфигов для каждого режима APP_ENV
+ENV_CONFIGS: Dict[str, dict] = {
+    "dev": DEV_CONFIG,
+    "prod": PROD_CONFIG,
+}
 
-def load_json_config() -> dict:
-    """Загружает и валидирует JSON-конфигурацию из config/main.json.
+# Режим окружения: APP_ENV=dev|prod (по умолчанию — prod)
+APP_ENV = os.getenv("APP_ENV", "prod").strip().lower()
 
-    При отсутствии файла, некорректном JSON или пропущенных обязательных
-    ключах — выбрасывает ConfigurationError.
+
+def load_config() -> dict:
+    """Загружает конфигурацию под текущий APP_ENV.
+
+    Собирает базовые настройки (config/base.py) и переопределения выбранного
+    режима (config/dev.py или config/prod.py). При неизвестном APP_ENV —
+    выбрасывает ConfigurationError.
     """
-    project_dir = Path(__file__).parents[1]
-    config_path = os.path.join(project_dir, "config", "main.json")
-    if not os.path.exists(config_path):
-        raise ConfigurationError(f"Файл config/main.json не найден: {config_path}")
+    if APP_ENV not in SUPPORTED_ENVS:
+        raise ConfigurationError(
+            f"APP_ENV='{APP_ENV}' не поддерживается. "
+            f"Допустимые значения: {', '.join(SUPPORTED_ENVS)}"
+        )
 
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-    except Exception as e:
-        raise ConfigurationError(f"Ошибка при загрузке config/main.json: {e}") from e
-
-    if not isinstance(config, dict):
-        raise ConfigurationError("config/main.json должен содержать JSON-объект")
+    config = ENV_CONFIGS[APP_ENV]
 
     missing = [key for key in REQUIRED_CONFIG_KEYS if key not in config]
     if missing:
         raise ConfigurationError(
-            f"В config/main.json отсутствуют обязательные ключи: {', '.join(missing)}"
+            f"В конфигурации для режима '{APP_ENV}' отсутствуют обязательные "
+            f"ключи: {', '.join(missing)}"
         )
 
-    logger.info(f"JSON-конфигурация загружена из main.json: {config}")
+    logger.info(f"Конфигурация загружена. Режим APP_ENV={APP_ENV}: {config}")
     return config
 
 
 def get_enabled_providers() -> list:
-    """Возвращает список включённых провайдеров из config/main.json."""
-    providers = json_config.get("enabled_providers")
+    """Возвращает список включённых провайдеров из конфигурации."""
+    providers = app_config.get("enabled_providers")
     if not isinstance(providers, list) or not providers:
         raise ConfigurationError(
-            "enabled_providers в config/main.json должен быть непустым списком"
+            "enabled_providers должен быть непустым списком (см. config/base.py)"
         )
 
     unknown = [p for p in providers if p not in SUPPORTED_PROVIDERS]
@@ -125,7 +138,7 @@ def validate_environment() -> None:
     if not any(p in enabled for p in SUPPORTED_PROVIDERS):
         errors.append(
             "Ни один провайдер не включён. Укажите 'yandex' и/или 'gigachat' "
-            "в enabled_providers в config/main.json"
+            "в enabled_providers (см. config/base.py)"
         )
 
     if errors:
@@ -136,9 +149,9 @@ def validate_environment() -> None:
     logger.info(f"Переменные окружения валидированы успешно. Провайдеры: {enabled}")
 
 
-# Загружаем JSON-конфигурацию при импорте модуля - доступен по всему проекту
+# Загружаем конфигурацию при импорте модуля - доступен по всему проекту
 try:
-    json_config = load_json_config()
+    app_config = load_config()
 
     # Валидируем обязательные переменные окружения (остановка приложения при отсутствии)
     validate_environment()

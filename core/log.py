@@ -1,7 +1,7 @@
-import logging
-import sys
 import json
+import logging
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -34,9 +34,9 @@ file_handler = logging.FileHandler("logs/app.log", encoding="utf-8")
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(JSONFormatter())
 
-# Настройка глобального логгера
+# Базовый уровень - DEBUG, чтобы файловый хендлер мог логировать debug
 logging.basicConfig(
-    level=logging.DEBUG,  # Базовый уровень - DEBUG, чтобы файловый хендлер мог логировать debug
+    level=logging.DEBUG,
     handlers=[console_handler, file_handler],
 )
 

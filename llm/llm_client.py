@@ -1,14 +1,16 @@
 """
-LLM Client — унифицированный клиент для работы с AI-провайдерами через OpenAI-совместимый API.
+LLM Client — унифицированный клиент для работы с AI-провайдерами
+через OpenAI-совместимый API.
 
 Оркестрирует запросы к провайдерам из реестра llm.providers
 (сейчас Yandex AI Studio и GigaChat). Провайдер-специфичная логика
 (сборка клиента, OAuth-токен и т.п.) вынесена в соответствующие модули.
 
 Обработка ошибок:
-- сетевые/временные ошибки      -> LLM_CLIENT_REQUEST_FAILED  (подлежат ретраю на уровне сервиса)
-- невалидный JSON в ответе      -> LLM_CLIENT_JSON_PARSE_ERROR
-- невалидная структура ответа   -> LLM_CLIENT_VALIDATION_ERROR
+- сетевые/временные ошибки -> LLM_CLIENT_REQUEST_FAILED
+  (подлежат ретраю на уровне сервиса)
+- невалидный JSON в ответе -> LLM_CLIENT_JSON_PARSE_ERROR
+- невалидная структура ответа -> LLM_CLIENT_VALIDATION_ERROR
 """
 
 import json
@@ -17,19 +19,19 @@ from typing import Any, Dict, Optional
 
 from openai import (
     APIConnectionError,
-    APITimeoutError,
     APIStatusError,
+    APITimeoutError,
     AsyncOpenAI,
     InternalServerError,
     RateLimitError,
 )
 
+from config.settings import app_config
 from core.log import logger
-from config.settings import json_config
 from llm.errors import (
-    LLM_CLIENT_VALIDATION_ERROR,
     LLM_CLIENT_JSON_PARSE_ERROR,
     LLM_CLIENT_REQUEST_FAILED,
+    LLM_CLIENT_VALIDATION_ERROR,
 )
 from llm.providers import PROVIDERS, build_provider
 from llm.providers.base import LLMProvider
@@ -52,14 +54,14 @@ class LLMClient:
     """Клиент для взаимодействия с LLM-провайдерами через OpenAI-совместимый API."""
 
     def __init__(self):
-        self.temperature = float(json_config["temperature"])
-        self.timeout = int(json_config["timeout"])
-        self.max_tokens = int(json_config["max_tokens"])
+        self.temperature = float(app_config["temperature"])
+        self.timeout = int(app_config["timeout"])
+        self.max_tokens = int(app_config["max_tokens"])
         self.system_prompt_template = SYSTEM_PROMPT_TEMPLATE
 
         self._providers: Dict[str, LLMProvider] = {}
         self._clients: Dict[str, AsyncOpenAI] = {}
-        for name in json_config["enabled_providers"]:
+        for name in app_config["enabled_providers"]:
             if name not in PROVIDERS:
                 raise RuntimeError(f"Неизвестный LLM-провайдер: {name!r}")
             provider = build_provider(name, self.timeout)
@@ -72,7 +74,8 @@ class LLMClient:
         if not self._providers:
             raise RuntimeError(
                 "Не удалось инициализировать ни одного AI-провайдера. "
-                "Проверьте enabled_providers в config/main.json и ключи в .env"
+                "Проверьте enabled_providers в конфиге (config/dev.py, config/prod.py) "
+                "и ключи в .env"
             )
 
         # Полный URI модели Yandex сохраняется отдельно: используется в ключе кэша
@@ -81,10 +84,13 @@ class LLMClient:
 
         logger.info(
             f"Инициализирован LLMClient. "
-            f"провайдеры: {list(self._providers.keys())}, температура: {self.temperature}"
+            f"провайдеры: {list(self._providers.keys())}, "
+            f"температура: {self.temperature}"
         )
 
-    def build_result_prompt(self, gender: str, age: int, style: str, message: str) -> str:
+    def build_result_prompt(
+        self, gender: str, age: int, style: str, message: str
+    ) -> str:
         """Собирает итоговый системный промпт (result_prompt).
 
         Подставляет данные пользователя в шаблон system_prompt_template.
@@ -102,11 +108,11 @@ class LLMClient:
         Приоритет задаётся порядком в enabled_providers из config:
         primary — нулевой индекс, secondary — следующий, и т.д.
         """
-        enabled = json_config["enabled_providers"]
+        enabled = app_config["enabled_providers"]
         return [p for p in enabled if p in self._providers]
 
     def get_provider_model(self, provider: str) -> str:
-        """Вернуть имя модели (без префикса gpt://{folder_id}) для указанного провайдера."""
+        """Имя модели (без префикса gpt://{folder_id}) для указанного провайдера."""
         return self._providers[provider].get_model_name()
 
     async def generate_looks_from_provider(
@@ -191,18 +197,20 @@ class LLMClient:
 
         look_variants = data.get("look_variants")
         if not isinstance(look_variants, list) or not look_variants:
-            logger.error(
-                f"{LLM_CLIENT_VALIDATION_ERROR}: отсутствует или некорректно поле 'look_variants'"
+            msg = (
+                f"{LLM_CLIENT_VALIDATION_ERROR}: отсутствует или некорректно "
+                f"поле 'look_variants'"
             )
-            raise Exception(
-                f"{LLM_CLIENT_VALIDATION_ERROR}: отсутствует или некорректно поле 'look_variants'"
-            )
+            logger.error(msg)
+            raise Exception(msg)
 
         for variant in look_variants:
             if not isinstance(variant, dict):
-                raise Exception(
-                    f"{LLM_CLIENT_VALIDATION_ERROR}: элемент look_variants не является объектом"
+                msg = (
+                    f"{LLM_CLIENT_VALIDATION_ERROR}: элемент look_variants "
+                    f"не является объектом"
                 )
+                raise Exception(msg)
             for field in ("title", "target", "description"):
                 if field not in variant or not isinstance(variant[field], str):
                     raise Exception(
@@ -212,9 +220,11 @@ class LLMClient:
 
         recommendation = data.get("recommendation")
         if not isinstance(recommendation, str):
-            raise Exception(
-                f"{LLM_CLIENT_VALIDATION_ERROR}: отсутствует или некорректно поле 'recommendation'"
+            msg = (
+                f"{LLM_CLIENT_VALIDATION_ERROR}: отсутствует или некорректно "
+                f"поле 'recommendation'"
             )
+            raise Exception(msg)
 
         return {
             "look_variants": [

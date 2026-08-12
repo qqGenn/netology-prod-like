@@ -2,6 +2,7 @@
 
 Импортирует глобальную конфигурацию из settings.py.
 """
-from .settings import json_config
 
-__all__ = ["json_config"]
+from .settings import app_config
+
+__all__ = ["app_config"]

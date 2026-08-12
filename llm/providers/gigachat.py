@@ -48,7 +48,7 @@ class GigaChatProvider:
         return bool(self._access_token) and time.time() < self._access_token_expires_at
 
     async def prepare_request(self) -> None:
-        """Получает/обновляет access-токен GigaChat через OAuth и подставляет его в клиент."""
+        """Обновляет access-токен GigaChat через OAuth и подставляет его в клиент."""
         if self._is_token_valid():
             return
 
@@ -76,9 +76,7 @@ class GigaChatProvider:
         try:
             payload = response.json()
             self._access_token = payload["access_token"]
-            self._access_token_expires_at = payload.get(
-                "expires_at", 0
-            ) / 1000.0 - 60
+            self._access_token_expires_at = payload.get("expires_at", 0) / 1000.0 - 60
         except (ValueError, KeyError) as e:
             logger.error(f"Некорректный ответ OAuth GigaChat: {response.text[:500]}")
             raise Exception(

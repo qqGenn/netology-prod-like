@@ -3,14 +3,14 @@ Pydantic модели для API.
 """
 
 from models.schemas import (
-    Gender,
-    Style,
-    LookCreate,
-    LookVariant,
-    LookData,
-    ValidationErrorDetail,
-    ApiResponseSuccess,
     ApiResponseError,
+    ApiResponseSuccess,
+    Gender,
+    LookCreate,
+    LookData,
+    LookVariant,
+    Style,
+    ValidationErrorDetail,
 )
 
 __all__ = [

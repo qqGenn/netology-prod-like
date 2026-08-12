@@ -15,17 +15,82 @@ python3 -m venv venv
 
 source venv/bin/activate
 
-pip install -r requirements.txt
-# Предварительно настроить .env по образцу .env.example (API-ключи)
+# Установка проекта с dev-зависимостями (тесты, линтеры, форматтеры)
+pip install -e ".[dev]"
+
+# Только runtime-зависимости
+pip install .
+
+# Предварительно настроить .env по образцу .env.example
+# Dev-сервер (APP_ENV=dev)
 uvicorn main:app --reload
+
+# Prod
+APP_ENV=prod uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 Документация API: http://127.0.0.1:8000/docs
 
+## Качество кода: линтеры и форматтеры
+
+Инструменты (`black`, `isort`, `flake8`, `mypy`, `pytest`) ставятся вместе с
+проектом как dev-зависимости: `pip install -e ".[dev]"`.
+
+Форматирование и проверка стиля:
+
+```bash
+# Форматирование и сортировка импортов
+black --exclude "venv|\.git|\.mypy_cache|\.pytest_cache|__pycache__" .
+isort --skip venv --skip .git --skip .mypy_cache --skip .pytest_cache --skip __pycache__ --profile black .
+
+# Проверка без изменений (для CI/самопроверки)
+black --check --exclude "venv|\.git|\.mypy_cache|\.pytest_cache|__pycache__" .
+isort --check-only --skip venv --skip .git --skip .mypy_cache --skip .pytest_cache --skip __pycache__ --profile black .
+```
+
+Линтеры:
+
+```bash
+# Линтер стиля (настройки в .flake8: max-line-length=88, выровнен под black)
+flake8 .
+
+# Статическая проверка типов
+mypy .
+```
+
+Линтеры проверяются одной командой:
+
+```bash
+flake8 . && mypy .
+```
+
+Тесты (unit, без вызовов реальных нейросетей):
+
+```bash
+pytest -q
+```
+
+Тесты герметичны: окружение (dummy-ключи провайдеров) задаётся в `tests/conftest.py`,
+реальные `.env`/секреты и сетевые вызовы не используются.
+
+## CI (GitHub Actions)
+
+Пайплайн `.github/workflows/ci.yml` запускается на каждый push в `main`/`dev` и
+pull request. Job выполняется в контейнере **Debian 13 (Trixie)** и проходит три
+шага:
+
+1. **Установка зависимостей** — создание venv и `pip install -e ".[dev]"`;
+2. **Линтер** — `flake8`, `mypy`, `black --check`, `isort --check-only`;
+3. **Тесты** — `pytest -q`.
+
 ## Конфигурация
 
+Режим окружения задаётся переменной `APP_ENV` (`dev` | `prod`, по умолчанию `prod`). Настройки разделены на базовые и переопределения:
+
 - **`.env`** — только credentials и endpoints (ключи Yandex/GigaChat, модель)
-- **`config/main.json`** — общие настройки: `timeout`, `temperature`, `max_tokens`, `max_retries`, `wait_time_base`, `enabled_providers`
+- **`config/base.py`** — базовые настройки, общие для всех режимов: `wait_time_base`, `temperature`, `max_tokens`, `enabled_providers`
+- **`config/dev.py`** — переопределения для разработки: `max_retries: 2`, `timeout: 45`
+- **`config/prod.py`** — переопределения для продакшна (текущие настройки): `max_retries: 3`, `timeout: 40`
   - `enabled_providers: ["yandex", "gigachat"]` — список активных провайдеров. Для временного отключения Yandex оставьте `["gigachat"]`
 
 ## Структура проекта
@@ -33,7 +98,11 @@ uvicorn main:app --reload
 ```
 main.py                        # FastAPI-приложение, обработчик ошибок валидации
 api/routes.py                  # POST /api/generate-look
-config/                        # settings.py (env) + main.json (параметры)
+config/                        # settings.py (APP_ENV) + base.py / dev.py / prod.py
+.flake8                        # настройки flake8 (max-line-length=88, выравнено под black)
+pyproject.toml                 # зависимости проекта (runtime + dev) и конфигурация pytest
+.github/workflows/ci.yml       # GitHub Actions CI (Debian 13 Trixie): deps → lint → tests
+tests/                         # unit-тесты: API (200/422), промпты, fallback, ретраи, конфиг
 models/schemas.py              # Pydantic-модели запросов/ответов
 services/image_maker_service.py # оркестрация: кэш → LLM → валидация
 llm/llm_client.py              # клиент LLM (Yandex + GigaChat фолбэк)
@@ -49,7 +118,7 @@ core/log.py                    # JSON-логирование
 2. **Хэш-ключ** → `sha256(result_prompt + model_name + temperature)`
 3. **Кэш** → при попадании (TTL ≤ 10 мин) мгновенный ответ без вызова LLM
 4. **LLM** → сборка `result_prompt` из шаблона + данные пользователя; запрос к Yandex, при ошибке фолбэк на GigaChat
-5. **Retry** → tenacity: ретрай только сетевых ошибок (`LLM_CLIENT_REQUEST_FAILED`), экспоненциальный backoff из `main.json`
+5. **Retry** → tenacity: ретрай только сетевых ошибок (`LLM_CLIENT_REQUEST_FAILED`), экспоненциальный backoff из конфигурации
 6. **Валидация ответа** → JSON-парсинг + проверка структуры + строгая проверка `LookData`
 7. **Кэширование** → запись результата с timestamp
 8. **Ответ** → `ApiResponseSuccess` / `ApiResponseError` (внутренние детали не утекают)

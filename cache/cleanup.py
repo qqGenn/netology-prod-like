@@ -38,9 +38,7 @@ def _is_stale(cache_file: str, ttl_seconds: int) -> bool:
 
     timestamp = data.get("timestamp")
     if not isinstance(timestamp, (int, float)):
-        logger.warning(
-            f"В кэш-файле отсутствует timestamp, будет удалён: {cache_file}"
-        )
+        logger.warning(f"В кэш-файле отсутствует timestamp, будет удалён: {cache_file}")
         return True
 
     return time.time() - timestamp > ttl_seconds

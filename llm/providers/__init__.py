@@ -8,9 +8,7 @@ from llm.providers.base import LLMProvider
 from llm.providers.gigachat import GigaChatProvider
 from llm.providers.yandex import YandexProvider
 
-PROVIDERS = {
-    provider.name: provider for provider in (YandexProvider, GigaChatProvider)
-}
+PROVIDERS = {provider.name: provider for provider in (YandexProvider, GigaChatProvider)}
 
 __all__ = [
     "LLMProvider",

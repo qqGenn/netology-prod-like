@@ -1,23 +1,27 @@
-from core.log import logger
-from config.settings import json_config
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
 from api import router
+from config.settings import app_config  # noqa: F401 - импорт ради загрузки конфига
+from core.log import logger
 
 app = FastAPI(
     title="ImageMaker — AI-имиджмейкер",
     description="""
     ImageMaker — это интеллектуальный сервис на базе искусственного интеллекта,
-    который помогает пользователям подобрать стильный образ (лук) на основе их индивидуальных характеристик.
-    Пользователь указывает пол, возраст, предпочтительный стиль одежды и описывает ситуацию, для которой подбирается образ.
-    Сервис генерирует несколько вариантов луков с подробным описанием, целевым назначением и общей рекомендацией.
+    который помогает пользователям подобрать стильный образ (лук) на основе
+    их индивидуальных характеристик. Пользователь указывает пол, возраст,
+    предпочтительный стиль одежды и описывает ситуацию, для которой подбирается
+    образ. Сервис генерирует несколько вариантов луков с подробным описанием,
+    целевым назначением и общей рекомендацией.
     """,
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # Роутер API
 app.include_router(router, prefix="/api")
+
 
 # Обработка ошибок валидации — возвращает ApiResponseError
 @app.exception_handler(RequestValidationError)

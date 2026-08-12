@@ -18,7 +18,7 @@ class LLMProvider(Protocol):
     client: AsyncOpenAI
 
     def get_model_name(self) -> str:
-        """Имя модели для логов — без приватных данных (например, без gpt://{folder_id})."""
+        """Имя модели для логов — без приватных данных (без gpt://{folder_id})."""
         ...
 
     async def prepare_request(self) -> None:

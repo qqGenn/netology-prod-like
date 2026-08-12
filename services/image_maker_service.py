@@ -2,23 +2,18 @@ import hashlib
 import json
 from typing import Union
 
-from tenacity import (
-    retry,
-    retry_if_exception,
-    stop_after_attempt,
-    wait_exponential,
-)
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from cache.cache_manager import CacheManager
-from config.settings import json_config
+from config.settings import app_config
+from core.log import logger
 from llm.llm_client import (
-    LLMClient,
-    LLM_CLIENT_VALIDATION_ERROR,
     LLM_CLIENT_JSON_PARSE_ERROR,
     LLM_CLIENT_REQUEST_FAILED,
+    LLM_CLIENT_VALIDATION_ERROR,
+    LLMClient,
 )
-from core.log import logger
-from models.schemas import LookCreate, LookData, ApiResponseSuccess, ApiResponseError
+from models.schemas import ApiResponseError, ApiResponseSuccess, LookCreate, LookData
 
 
 def _is_retryable_error(exc: BaseException) -> bool:
@@ -49,9 +44,9 @@ class ImageMakerService:
         self.llm = LLMClient()
 
     @retry(
-        stop=stop_after_attempt(json_config.get("max_retries", 3)),
+        stop=stop_after_attempt(app_config.get("max_retries", 3)),
         wait=wait_exponential(
-            multiplier=json_config.get("wait_time_base", 2), min=1, max=60
+            multiplier=app_config.get("wait_time_base", 2), min=1, max=60
         ),
         retry=retry_if_exception(_is_retryable_error),
         before_sleep=_log_retry,
@@ -149,7 +144,8 @@ class ImageMakerService:
                     status="error",
                     error_type="internal",
                     message="Ошибка валидации ответа LLM (неверный формат данных), "
-                    "попробуйте снова, если ошибка повторяется - обратитесь в техподдержку.",
+                    "попробуйте снова, если ошибка повторяется - "
+                    "обратитесь в техподдержку.",
                 )
 
             if error_msg.startswith(LLM_CLIENT_JSON_PARSE_ERROR):

@@ -5,13 +5,10 @@ API роуты для ImageMaker сервиса.
 from typing import Annotated, Union
 
 from fastapi import APIRouter, Body, status
+from fastapi.responses import JSONResponse
 
 from core.log import logger
-from models.schemas import (
-    LookCreate,
-    ApiResponseSuccess,
-    ApiResponseError,
-)
+from models.schemas import ApiResponseError, ApiResponseSuccess, LookCreate
 from services.image_maker_service import ImageMakerService
 
 router = APIRouter()
@@ -49,18 +46,20 @@ _SUCCESS_RESPONSE_EXAMPLE = {
             {
                 "title": "Элегантный кэжуал для свидания",
                 "target": "Выглядеть уместно и стильно в ресторане",
-                "description": "Комбинация тёмных брюк чинос, струящейся блузы и лёгкого "
-                "жакета. Дополните образ минималистичными украшениями и замшевыми лоферами.",
+                "description": "Комбинация тёмных брюк чинос, струящейся блузы "
+                "и лёгкого жакета. Дополните образ минималистичными украшениями "
+                "и замшевыми лоферами.",
             },
             {
                 "title": "Смарт-кэжуал",
                 "target": "Сочетать комфорт и элегантность в вечерней обстановке",
-                "description": "Классическая рубашка в приглушённых тонах с тёмными джинсами "
-                "прямого кроя и кроссовками. Акцент — на качественных тканях и чистой гамме.",
+                "description": "Классическая рубашка в приглушённых тонах с тёмными "
+                "джинсами прямого кроя и кроссовками. Акцент — на качественных "
+                "тканях и чистой гамме.",
             },
         ],
-        "recommendation": "Отдайте предпочтение приглушённой палитре и чистым силуэтам, "
-        "чтобы выглядеть уверенно и уместно.",
+        "recommendation": "Отдайте предпочтение приглушённой палитре и чистым "
+        "силуэтам, чтобы выглядеть уверенно и уместно.",
     },
 }
 
@@ -79,7 +78,8 @@ _VALIDATION_RESPONSE_EXAMPLE = {
         {
             "field": "style",
             "error": "Ошибка значения 'style': значение 'sorty' недопустимо. "
-            "Допустимые значения: 'sporty', 'casual', 'formal', 'informal' or 'eccentric'",
+            "Допустимые значения: 'sporty', 'casual', 'formal', "
+            "'informal' or 'eccentric'",
         }
     ],
 }
@@ -102,9 +102,9 @@ _INTERNAL_RESPONSE_EXAMPLE = {
     ),
     responses={
         200: {
-            "description": "Успешная генерация образа. Тело ответа содержит либо результат "
-            "генерации (status: 'success'), либо ошибку (status: 'error'), например при "
-            "недоступности LLM-провайдера.",
+            "description": "Успешная генерация образа. Тело ответа содержит "
+            "либо результат генерации (status: 'success'), либо ошибку "
+            "(status: 'error'), например при недоступности LLM-провайдера.",
             "content": {
                 "application/json": {
                     "examples": {
@@ -122,8 +122,8 @@ _INTERNAL_RESPONSE_EXAMPLE = {
         },
         422: {
             "model": ApiResponseError,
-            "description": "Ошибка валидации запроса Pydantic (неверные поля или значения "
-            "вне допустимых диапазонов).",
+            "description": "Ошибка валидации запроса Pydantic (неверные поля "
+            "или значения вне допустимых диапазонов).",
             "content": {
                 "application/json": {
                     "examples": {
@@ -181,8 +181,12 @@ async def generate_look(
         return await image_maker_service.generate_look(request)
     except Exception as e:
         logger.error(f"Необработанная ошибка: {str(e)}", exc_info=True)
-        return ApiResponseError(
-            status="error",
-            error_type="internal",
-            message="Внутренняя ошибка сервера. Пожалуйста, попробуйте позже.",
+        # Response-экземпляр отдаётся FastAPI напрямую, без response_model
+        return JSONResponse(  # type: ignore[return-value]
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "status": "error",
+                "error_type": "internal",
+                "message": "Внутренняя ошибка сервера. Пожалуйста, попробуйте позже.",
+            },
         )
