@@ -315,6 +315,8 @@ pytest -q
 Тесты герметичны: окружение (dummy-ключи провайдеров) задаётся в `tests/conftest.py`,
 реальные `.env`/секреты и сетевые вызовы не используются.
 
+Подробное описание тестов (что и какие кейсы проверяются) — в [TESTING.md](TESTING.md).
+
 ## CI (GitHub Actions)
 
 Пайплайн `.github/workflows/ci.yml` запускается на каждый push в `main`/`dev` и
@@ -335,6 +337,7 @@ config/                        # settings.py (APP_ENV) + base.py / dev.py / prod
 pyproject.toml                 # зависимости проекта (runtime + dev) и конфигурация pytest
 .github/workflows/ci.yml       # GitHub Actions CI (Debian 13 Trixie): deps → lint → tests
 tests/                         # unit-тесты: API (200/422), промпты, fallback, ретраи, конфиг
+TESTING.md                     # подробное описание тестов и кейсов
 models/schemas.py              # Pydantic-модели запросов/ответов
 services/image_maker_service.py # оркестрация: кэш → LLM → валидация
 llm/llm_client.py              # клиент LLM (Yandex + GigaChat фолбэк)
