@@ -1,0 +1,6 @@
+[flake8]
+# Выравниваем лимит строки под black (по умолчанию 88), а не под дефолт flake8 (79)
+max-line-length = 88
+# Правила, конфликтующие с black (см. документацию black)
+extend-ignore = E203, W503
+exclude = .git,venv,__pycache__,.mypy_cache,.pytest_cache,build,dist
