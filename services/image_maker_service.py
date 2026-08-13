@@ -31,7 +31,7 @@ def _log_retry(retry_state) -> None:
     remaining = max_attempts - attempt
     logger.warning(
         f"Ретрай LLM-запроса: модель={model!r}, "
-        f"попытка {attempt}/{max_attempts}, осталось попыток: {remaining}. "
+        f"осталось попыток: {remaining}. "
         f"Ошибка: {retry_state.outcome.exception()}"
     )
 

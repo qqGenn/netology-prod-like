@@ -134,6 +134,7 @@ class LLMClient:
 
         start_time = time.time()
         try:
+            logger.info(f"Выполняем запрос к LLM-провайдеру '{provider}' ")
             response = await client.chat.completions.create(
                 model=provider_obj.model,
                 messages=[
